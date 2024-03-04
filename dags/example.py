@@ -1,56 +1,147 @@
 import os
-import json
 import datetime
-from pathlib import Path
 
-from airflow.decorators import task
 from airflow.models.dag import DAG
 from airflow.operators.python import PythonOperator
 from airflow.providers.google.cloud.transfers.gcs_to_local import GCSToLocalFilesystemOperator
-from pymongo import MongoClient
 
-# GCS related constants
-BUCKET_NAME = "msds697-jobs"
-FILE_NAME = "jobs/jobs.json"
-
-# airflow environment variable (do not change)
-AIRFLOW_HOME = Path(os.environ.get('AIRFLOW_HOME'))
-
-# local file path
-PATH_TO_SAVED_FILE = AIRFLOW_HOME / "airflow" / "jobs.json"
-
-# Mongo DB configuration
-DATABASE_NAME = "msds697"
-COLLECTION_NAME = "jobs"
-MONGODB_HOST = 'localhost'
-MONGODB_PORT = 27017
-
-def upload_to_mongo():
-    client = MongoClient(host=MONGODB_HOST, port=MONGODB_PORT)
-    db = client[DATABASE_NAME]
-    collection = db[COLLECTION_NAME]
-    with open(PATH_TO_SAVED_FILE, "r") as file:
-        documents = json.load(file)
-        collection.insert_many(documents)
+from mongodb import upload_to_mongo
+from visualization \
+    import \
+        types_of_job_postings, \
+        ds_job_postings_in_ffang, \
+        proportion_of_relevant_postings, \
+        average_salary
+from models import random_forest, simple_linear_regression
+from spark import save_spark_dataframe
 
 with DAG(
     dag_id="example",
     start_date=datetime.datetime(2024, 2, 1),
     catchup=False,
-    schedule="@daily",
+    schedule=None,
     tags=["example"],
+    params={
+        'gcs_bucket_name' : 'msds697-jobs',
+        'gcs_input_dir_path' : 'jobs',
+        'output_dir_path' : '/tmp',
+        'mongodb_host' : 'localhost',
+        'mongodb_port' : '27017',
+        'mongodb_database' : 'msds697',
+        'mongodb_collection' : 'jobs'
+    }
 ) as dag:
-    
-    download_file = GCSToLocalFilesystemOperator(
-        task_id="download_file",
-        object_name=FILE_NAME,
-        bucket=BUCKET_NAME,
-        filename=PATH_TO_SAVED_FILE
+    gcs_input_file_path = os.path.join("{{ params.gcs_input_dir_path }}", 'jobs.json')
+    output_file_path = os.path.join("{{ params.output_dir_path }}", 'jobs.json')
+    parquet_path = os.path.join("{{ params.output_dir_path }}", 'parquets')
+
+    gcs_download_task = GCSToLocalFilesystemOperator(
+        task_id="download_file_from_gcs",
+        bucket="{{ params.gcs_bucket_name }}",
+        object_name=gcs_input_file_path,
+        filename=output_file_path
     )
 
-    upload_file_to_mongodb = PythonOperator(
+    mongodb_import_task = PythonOperator(
         task_id='upload_mongodb',
-        python_callable=upload_to_mongo
+        python_callable=upload_to_mongo,
+        op_kwargs={
+            'host' : "{{ params.mongodb_host }}",
+            'port' : "{{ params.mongodb_port }}",
+            'database_name' : "{{ params.mongodb_database }}",
+            'collection_name' : "{{ params.mongodb_collection }}",
+            'input_file_path' : output_file_path
+        }
     )
 
-    download_file >> upload_file_to_mongodb
+    visualization_tasks = [
+        PythonOperator(
+            task_id='types_of_job_postings',
+            python_callable=types_of_job_postings,
+            op_kwargs={
+                'host' : "{{ params.mongodb_host }}",
+                'port' : "{{ params.mongodb_port }}",
+                'database_name' : "{{ params.mongodb_database }}",
+                'collection_name' : "{{ params.mongodb_collection }}",
+                'output_path' : "{{ params.output_dir_path }}"
+            }
+        ),
+        PythonOperator(
+            task_id='ds_job_postings_in_ffang',
+            python_callable=ds_job_postings_in_ffang,
+            op_kwargs={
+                'host' : "{{ params.mongodb_host }}",
+                'port' : "{{ params.mongodb_port }}",
+                'database_name' : "{{ params.mongodb_database }}",
+                'collection_name' : "{{ params.mongodb_collection }}",
+                'output_path' : "{{ params.output_dir_path }}"
+            }
+        ),
+        PythonOperator(
+            task_id='proportion_of_relevant_postings',
+            python_callable=proportion_of_relevant_postings,
+            op_kwargs={
+                'host' : "{{ params.mongodb_host }}",
+                'port' : "{{ params.mongodb_port }}",
+                'database_name' : "{{ params.mongodb_database }}",
+                'collection_name' : "{{ params.mongodb_collection }}",
+                'output_path' : "{{ params.output_dir_path }}"
+            }
+        ),
+        PythonOperator(
+            task_id='average_salary',
+            python_callable=average_salary,
+            op_kwargs={
+                'host' : "{{ params.mongodb_host }}",
+                'port' : "{{ params.mongodb_port }}",
+                'database_name' : "{{ params.mongodb_database }}",
+                'collection_name' : "{{ params.mongodb_collection }}",
+                'input_path' : parquet_path,
+                'output_path' : "{{ params.output_dir_path }}"
+            }
+        )
+    ]
+
+    spark_dataframe_task = PythonOperator(
+        task_id='spark_dataframe_save',
+        python_callable=save_spark_dataframe,
+        op_kwargs={
+            'host' : "{{ params.mongodb_host }}",
+            'port' : "{{ params.mongodb_port }}",
+            'database_name' : "{{ params.mongodb_database }}",
+            'collection_name' : "{{ params.mongodb_collection }}",
+            'output_path' : parquet_path
+        }
+    )
+
+    modeling_task = [
+        PythonOperator(
+            task_id='random_forest',
+            python_callable=random_forest,
+            op_kwargs={
+                'host' : "{{ params.mongodb_host }}",
+                'port' : "{{ params.mongodb_port }}",
+                'database_name' : "{{ params.mongodb_database }}",
+                'collection_name' : "{{ params.mongodb_collection }}",
+                'input_path' : parquet_path,
+                'output_path' : "{{ params.output_dir_path }}"
+            }
+        ),
+        PythonOperator(
+            task_id='simple_linear_regression',
+            python_callable=simple_linear_regression,
+            op_kwargs={
+                'host' : "{{ params.mongodb_host }}",
+                'port' : "{{ params.mongodb_port }}",
+                'database_name' : "{{ params.mongodb_database }}",
+                'collection_name' : "{{ params.mongodb_collection }}",
+                'input_path' : parquet_path,
+                'output_path' : "{{ params.output_dir_path }}"
+            }
+        )
+    ]
+
+    gcs_download_task >> mongodb_import_task >> spark_dataframe_task
+    spark_dataframe_task >> visualization_tasks[-1]
+    spark_dataframe_task >> modeling_task
+    mongodb_import_task.set_downstream(visualization_tasks)

@@ -1,6 +1,11 @@
 # MSDS697-final-project
 Final project in the class (MSDS697 -  Distributed Data Systems)
 
+### Python environment
+```bash
+pip install airflow[google] pymongo pyspark matplotlib seaborn joblib
+```
+
 ### Airflow setup
 ```bash
 # Set up the environmental variable
@@ -18,6 +23,8 @@ export AIRFLOW_CONN_GOOGLE_CLOUD_DEFAULT='{
 # run in a terminal
 ### initialize airflow db
 airflow db migrate
+# or
+# airflow db init
 
 ### create user
 ### id: admin, password: admin
@@ -50,4 +57,31 @@ DATABASE_NAME = "msds697"
 COLLECTION_NAME = "jobs"
 MONGODB_HOST = 'localhost'
 MONGODB_PORT = 27017
+```
+
+### Pipeline tasks
+![example](images/run_example.png)
+
+### Artifacts
+
+#### [data analysis] plots
+- average_salary.png
+![alt text](images/average_salary.png) 
+
+- ds_job_postings_in_ffang.png
+![alt text](images/ds_job_postings_in_ffang.png)
+
+- proportion_of_relevant_postings.png
+![alt text](images/proportion_of_relevant_postings.png) 
+
+- images/top_companies_by_salary.png
+![alt text](images/top_companies_by_salary.png)
+
+- types_of_job_postings.png
+![alt text](images/types_of_job_postings.png)
+
+#### [model] test score of salary prediction models
+- In `rf_model_evaluation.txt` and `slr_model_evaluation.txt`
+```
+Root Mean Squared Error (RMSE) on test data = 2210.18
 ```
