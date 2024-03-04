@@ -40,23 +40,17 @@ airflow webserver
 airflow scheduler
 ```
 
-You also need to set-up the constants defined in dags/example.py if some of them are different except `AIRFLOW_HOME`
+You also need to set-up the parameters that are passed through in dags/example.py
 ```python
-# GCS related constants
-BUCKET_NAME = "msds697-jobs"
-FILE_NAME = "jobs/jobs.json"
-
-# airflow environment variable (do not change)
-AIRFLOW_HOME = Path(os.environ.get('AIRFLOW_HOME'))
-
-# local file path
-PATH_TO_SAVED_FILE = AIRFLOW_HOME / "airflow" / "jobs.json"
-
-# Mongo DB configuration
-DATABASE_NAME = "msds697"
-COLLECTION_NAME = "jobs"
-MONGODB_HOST = 'localhost'
-MONGODB_PORT = 27017
+params={
+        'gcs_bucket_name' : 'msds697-jobs', # bucket name where your input data is located
+        'gcs_input_dir_path' : 'jobs', # path to the file from your bucket
+        'output_dir_path' : '/tmp', # directory path for your artifacts (location for outputs)
+        'mongodb_host' : 'localhost',
+        'mongodb_port' : '27017',
+        'mongodb_database' : 'msds697',
+        'mongodb_collection' : 'jobs'
+    }
 ```
 
 ### Pipeline tasks
